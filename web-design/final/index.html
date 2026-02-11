@@ -1,0 +1,1973 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>US House — Winner/Buckets & Multi-Party Blend</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+    <script src="pmtiles.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <style>
+      :root {
+        --border: #d1d5db;
+        --muted: #6b7280;
+        --bg: #f8fafc;
+        --card: #fff;
+        --shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        --legendTop: 14px;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+        background: var(--bg);
+        color: #0f172a;
+      }
+
+      /* Top bar */
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(6px);
+        border-bottom: 1px solid var(--border);
+      }
+      .title {
+        font-weight: 800;
+        font-size: 14px;
+        margin-right: auto;
+      }
+      .btn {
+        border: 1px solidx var(--border);
+        background: var(--card);
+        border-radius: 10px;
+        padding: 6px 12px;
+        box-shadow: var(--shadow);
+        cursor: pointer;
+      }
+      .mini {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        border-radius: 999px;
+      }
+      .pill {
+        position: relative;
+        width: 46px;
+        height: 24px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: #e5e7eb;
+      }
+      .knob {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #fff;
+        border: 1px solid #cbd5e1;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+        transition: transform 0.2s;
+      }
+      .toggle[aria-pressed='true'] .pill {
+        background: #e0e7ff;
+        border-color: #c7d2fe;
+      }
+      .toggle[aria-pressed='true'] .knob {
+        transform: translateX(22px);
+      }
+
+      /* Controls */
+      #controls {
+        position: sticky;
+        top: 48px;
+        z-index: 30;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        padding: 10px;
+        background: #f3f4f6;
+        border-bottom: 1px solid var(--border);
+      }
+      .field {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .num {
+        width: 120px;
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+        box-shadow: var(--shadow);
+      }
+      .chipbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .switch {
+        appearance: none;
+        width: 34px;
+        height: 20px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: #fff;
+        position: relative;
+        box-shadow: var(--shadow);
+        vertical-align: middle;
+      }
+      .switch:after {
+        content: '';
+        position: absolute;
+        left: 2px;
+        top: 2px;
+        width: 14px;
+        height: 14px;
+        border-radius: 999px;
+        background: #e5e7eb;
+        transition: transform 0.15s;
+      }
+      .switch:checked {
+        background: #dbeafe;
+        border-color: #bfdbfe;
+      }
+      .switch:checked:after {
+        transform: translateX(14px);
+      }
+
+      /* Stage / Map */
+      #stage {
+        position: relative;
+        height: calc(100vh - 112px);
+      }
+      #map {
+        width: 100%;
+        height: 100%;
+        background: #eef2f7;
+      }
+
+      /* Legend */
+      #legend {
+        position: fixed;
+        top: var(--legendTop);
+        right: 14px;
+        width: 340px;
+        max-height: 60vh;
+        overflow: auto;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        z-index: 35;
+        padding: 10px;
+      }
+      #legend-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+      #legend-title {
+        font-weight: 800;
+        font-size: 14px;
+        flex: 1;
+      }
+      #legend-toggle {
+        border: 1px solid var(--border);
+        background: #fff;
+        border-radius: 8px;
+        padding: 4px 8px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      #legend-buckets {
+        display: none;
+      }
+      #legend-grid {
+        display: none;
+        grid-auto-rows: min-content;
+        row-gap: 8px;
+        column-gap: 10px;
+        font-size: 12px;
+        width: max-content;
+        align-items: center;
+      }
+      .legend-head {
+        font-weight: 600;
+        text-align: center;
+        white-space: nowrap;
+      }
+      .legend-party {
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+        white-space: nowrap;
+        line-height: 1;
+      }
+      .legend-label {
+        white-space: normal;
+      }
+      .legend-swatch,
+      .swatch {
+        width: 24px;
+        height: 14px;
+        border: 1px solid #9ca3af;
+      }
+      .swatch.nd {
+        background: #111;
+      }
+      .swatch.off {
+        background: repeating-linear-gradient(
+          45deg,
+          #f3f4f6,
+          #f3f4f6 6px,
+          #e5e7eb 6px,
+          #e5e7eb 12px
+        );
+        border-color: #cbd5e1;
+      }
+      #mix-canvas {
+        width: 320px;
+        height: auto;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        display: none;
+        cursor: crosshair;
+      }
+      #one-swatch {
+        display: none;
+      }
+      #single-color {
+        width: 28px;
+        height: 18px;
+        border: 1px solid #9ca3af;
+        border-radius: 4px;
+        display: inline-block;
+        margin-right: 8px;
+      }
+      #legend-note {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #4b5563;
+      }
+      #legend-tip {
+        position: fixed;
+        pointer-events: none;
+        background: rgba(255, 255, 255, 0.98);
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        padding: 6px 8px;
+        font-size: 12px;
+        display: none;
+        z-index: 60;
+        min-width: 160px;
+        max-width: 240px;
+        line-height: 1.3;
+      }
+      #legend-tip .row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 2px 0;
+      }
+      #legend-tip .sq {
+        width: 10px;
+        height: 10px;
+        border: 1px solid #9ca3af;
+        border-radius: 2px;
+        display: inline-block;
+      }
+      #legend-tip .mix {
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      #legend-tip .mix .sq {
+        width: 14px;
+        height: 14px;
+      }
+
+      /* Drawer */
+      #backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.18);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 100;
+      }
+      #backdrop.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #drawer {
+        position: fixed;
+        top: 0;
+        right: -380px;
+        bottom: 0;
+        width: 360px;
+        background: #fff;
+        border-left: 1px solid #e5e7eb;
+        box-shadow: -8px 0 16px rgba(0, 0, 0, 0.12);
+        transition: right 0.2s;
+        z-index: 101;
+        display: flex;
+        flex-direction: column;
+      }
+      #drawer.open {
+        right: 0;
+      }
+      .drawer-hd {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      .drawer-hd h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+        flex: 1;
+      }
+      .drawer-body {
+        padding: 12px;
+        overflow: auto;
+      }
+      .sec {
+        margin-bottom: 16px;
+      }
+      .sec h4 {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+      .minirow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 6px 0;
+      }
+      input[type='range'] {
+        width: 160px;
+      }
+      .party-row {
+        display: grid;
+        grid-template-columns: minmax(120px, 1fr) 72px 72px 1fr auto;
+        align-items: center;
+        gap: 8px;
+        margin: 8px 0;
+      }
+      .party-row.single {
+        grid-template-columns: minmax(120px, 1fr) 72px 1fr auto;
+      }
+      .grad {
+        height: 10px;
+        border: 1px solid #9ca3af;
+        border-radius: 4px;
+      }
+      .pill-small {
+        border: 1px solid var(--border);
+        background: #fff;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      /* Map tooltip */
+      #tooltip {
+        position: fixed;
+        background: rgba(255, 255, 255, 0.96);
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 14px;
+        pointer-events: none;
+        display: none;
+        border: 1px solid #e5e7eb;
+        box-shadow: var(--shadow);
+        z-index: 70;
+        max-width: 320px;
+        line-height: 1.35;
+      }
+      #tooltip strong {
+        font-size: 18px;
+      }
+
+      /* Screenshot mode */
+      body.ss #legend {
+        display: none;
+      } /* hide by default in SS */
+      body.ss.show-legend #legend {
+        display: block;
+      } /* show if checkbox checked */
+      #ss-tools {
+        position: fixed;
+        bottom: 12px;
+        left: 12px;
+        z-index: 120;
+        display: none;
+        gap: 8px;
+      }
+      body.ss #ss-tools {
+        display: flex;
+      }
+
+      /* Multiselect */
+      .ms {
+        position: relative;
+        min-width: 280px;
+      }
+      .ms-control {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        min-height: 36px;
+        padding: 6px 10px;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        cursor: pointer;
+      }
+      .ms-placeholder {
+        color: var(--muted);
+      }
+      .ms-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px;
+        background: #eef2ff;
+        border: 1px solid #c7d2fe;
+        border-radius: 999px;
+        font-size: 12px;
+      }
+      .ms-chip button {
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+      }
+      .ms-caret {
+        margin-left: auto;
+        color: var(--muted);
+      }
+      .ms-dropdown {
+        position: absolute;
+        left: 0;
+        top: calc(100% + 6px);
+        width: max(100%, 320px);
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        box-shadow: var(--shadow);
+        display: none;
+        z-index: 200;
+      }
+      .ms.open .ms-dropdown {
+        display: block;
+      }
+      .ms-actions {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      .ms-actions button {
+        border: 1px solid var(--border);
+        background: #fff;
+        border-radius: 8px;
+        padding: 4px 8px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .ms-search {
+        width: calc(100% - 16px);
+        margin: 8px;
+        padding: 6px 8px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        outline: none;
+      }
+      .ms-list {
+        max-height: 260px;
+        overflow: auto;
+        padding: 4px 8px 8px;
+      }
+      .ms-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 2px;
+      }
+      .ms-item input {
+        width: 14px;
+        height: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar" id="topbar">
+      <div class="title">US House — Single File</div>
+      <button
+        id="mode-toggle"
+        class="btn toggle"
+        type="button"
+        aria-pressed="false"
+        title="Toggle (T)"
+      >
+        <span class="pill" aria-hidden="true"><span class="knob"></span></span>
+        <strong id="modeLabel" class="mini">Winner (Buckets)</strong>
+      </button>
+      <span class="mini">Press <b>T</b> to toggle modes</span>
+    </header>
+
+    <div id="controls">
+      <label for="year">Year:</label>
+      <select id="year">
+        <option value="2010" selected>2010</option>
+        <option value="2014">2014</option>
+      </select>
+
+      <div class="chipbox">
+        <label>Party:</label>
+        <div id="party-ms" class="ms">
+          <div class="ms-control" tabindex="0">
+            <span class="ms-placeholder">Select parties…</span>
+            <span class="ms-caret">▾</span>
+          </div>
+          <div class="ms-dropdown">
+            <div class="ms-actions">
+              <button type="button" id="ms-select-all">Select all</button>
+              <button type="button" id="ms-clear">Clear</button>
+            </div>
+            <input type="text" class="ms-search" placeholder="Search parties…" />
+            <div class="ms-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <button id="styles-btn" class="btn" type="button">Styles</button>
+      <span id="modeHint" class="mini"
+        >This mode colors winners by buckets and per-party gradients.</span
+      >
+
+      <div class="field">
+        <label class="mini">Lat</label><input id="lat" class="num" type="number" step="0.0001" />
+        <label class="mini">Lon</label><input id="lon" class="num" type="number" step="0.0001" />
+        <label class="mini">Zoom</label><input id="zoom" class="num" type="number" step="0.01" />
+        <button id="go" class="btn" type="button" title="Pan/zoom to entered values">Go</button>
+        <label class="mini" style="display: inline-flex; align-items: center; gap: 6px">
+          <input id="ss-legend" class="switch" type="checkbox" />
+          Include legend in screenshot
+        </label>
+        <button id="ss-mode" class="btn" type="button">Screenshot</button>
+      </div>
+    </div>
+
+    <div id="stage">
+      <div id="map"></div>
+
+      <aside id="legend">
+        <div id="legend-header">
+          <div id="legend-title">Buckets Legend</div>
+          <button id="legend-toggle" type="button">Switch layout</button>
+        </div>
+        <div id="legend-buckets"></div>
+        <div id="legend-grid"></div>
+        <canvas id="mix-canvas" width="320" height="220"></canvas>
+        <div id="one-swatch">
+          <span id="single-color"></span><span class="mini">Single party</span>
+        </div>
+        <div id="legend-note"></div>
+      </aside>
+      <div id="legend-tip"></div>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <div id="backdrop"></div>
+    <aside id="drawer" aria-hidden="true">
+      <div class="drawer-hd">
+        <h3 id="drawer-title">Styles (Buckets & Gradients)</h3>
+        <button class="btn" id="close-drawer" type="button">Close</button>
+      </div>
+      <div class="drawer-body">
+        <div class="sec" id="bucket-sec">
+          <h4>Buckets (0–100%)</h4>
+          <div class="mini">Strictly increasing. Drag or type exact %</div>
+          <div class="minirow">
+            <label class="mini" style="width: 24px">B1</label
+            ><input id="r1" type="range" min="1" max="99" step="1" /><input
+              id="n1"
+              class="num"
+              type="number"
+              min="1"
+              max="99"
+              step="1"
+            />
+          </div>
+          <div class="minirow">
+            <label class="mini" style="width: 24px">B2</label
+            ><input id="r2" type="range" min="1" max="99" step="1" /><input
+              id="n2"
+              class="num"
+              type="number"
+              min="1"
+              max="99"
+              step="1"
+            />
+          </div>
+          <div class="minirow">
+            <label class="mini" style="width: 24px">B3</label
+            ><input id="r3" type="range" min="1" max="99" step="1" /><input
+              id="n3"
+              class="num"
+              type="number"
+              min="1"
+              max="99"
+              step="1"
+            />
+          </div>
+          <div class="minirow">
+            <label class="mini" style="width: 24px">B4</label
+            ><input id="r4" type="range" min="1" max="99" step="1" /><input
+              id="n4"
+              class="num"
+              type="number"
+              min="1"
+              max="99"
+              step="1"
+            />
+          </div>
+          <div class="minirow">
+            <button class="pill-small" id="preset-classic" type="button">
+              Classic 35/50/62/78
+            </button>
+            <button class="pill-small" id="preset-even" type="button">Even 20/40/60/80</button>
+            <button class="pill-small" id="preset-tight" type="button">Tight 45/50/55/60</button>
+            <span id="bucket-msg" class="mini"></span>
+          </div>
+        </div>
+
+        <div class="sec" id="colors-sec">
+          <h4>Per-party colors (endpoints)</h4>
+          <div class="mini">Pick start/end; 5 shades auto-interpolated.</div>
+          <div id="party-colors-grad"></div>
+          <div class="mini" id="colors-hint-grad" style="color: #b91c1c; display: none">
+            No parties selected.
+          </div>
+        </div>
+
+        <div class="sec" id="solid-sec" style="display: none">
+          <h4>Per-party color (single)</h4>
+          <div class="mini">“Reset” uses palette CSV upper bound.</div>
+          <div id="party-colors-solid"></div>
+        </div>
+      </div>
+    </aside>
+
+    <div id="ss-tools">
+      <button id="ss-exit" class="btn" type="button">Exit</button>
+      <button id="ss-download" class="btn" type="button">Download PNG</button>
+    </div>
+
+    <script>
+      /* ===== Bootstraps ===== */
+      const protocol = new pmtiles.Protocol();
+      maplibregl.addProtocol('pmtiles', protocol.tile);
+
+      const tileSources = {
+        2010: 'GRED_UnitedStates_2010_r3.pmtiles',
+        2014: 'GRED_UnitedStates_2014_r3.pmtiles',
+      };
+      let currentMode = 'winner';
+      const srcId = 'election-data';
+      let csvData = [];
+      let colorIndex = new Map();
+      let paletteOverridesGrad = new Map();
+      let paletteOverridesSolid = new Map();
+      let sourceLayer = '';
+
+      const map = new maplibregl.Map({
+        container: 'map',
+        style: { version: 8, sources: {}, layers: [] },
+        center: [-98, 39],
+        zoom: 3,
+        preserveDrawingBuffer: true, // required for canvas export
+      });
+
+      /* ===== Legend positioning under sticky bars ===== */
+      function positionLegend(force = false) {
+        const tb = document.getElementById('topbar');
+        const ctr = document.getElementById('controls');
+        const extra = 8;
+        const topPx = (tb?.offsetHeight || 0) + (ctr?.offsetHeight || 0) + extra;
+        document.documentElement.style.setProperty('--legendTop', topPx + 'px');
+      }
+      window.addEventListener('load', () => positionLegend(true));
+      window.addEventListener('resize', () => positionLegend(false));
+
+      /* ===== Shortcuts ===== */
+      document.addEventListener('keydown', (e) => {
+        if (e.key.toLowerCase() === 't' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+          e.preventDefault();
+          toggleMode();
+        }
+      });
+
+      /* ===== UI refs ===== */
+      const modeBtn = document.getElementById('mode-toggle');
+      const modeLabel = document.getElementById('modeLabel');
+      const modeHint = document.getElementById('modeHint');
+      const yearSelect = document.getElementById('year');
+      const stylesBtn = document.getElementById('styles-btn');
+      const drawer = document.getElementById('drawer');
+      const backdrop = document.getElementById('backdrop');
+      const drawerTitle = document.getElementById('drawer-title');
+      document.getElementById('close-drawer').onclick = closeDrawer;
+      stylesBtn.onclick = () => {
+        refreshPartyEditor();
+        openDrawer();
+      };
+      backdrop.onclick = closeDrawer;
+      function openDrawer() {
+        drawer.classList.add('open');
+        backdrop.classList.add('open');
+      }
+      function closeDrawer() {
+        drawer.classList.remove('open');
+        backdrop.classList.remove('open');
+      }
+
+      /* ===== Mode toggle ===== */
+      function setMode(which) {
+        currentMode = which;
+        const isBlend = which === 'blend';
+        modeBtn.setAttribute('aria-pressed', isBlend ? 'true' : 'false');
+        modeLabel.textContent = isBlend ? 'Multi-Party Blend' : 'Winner (Buckets)';
+        modeHint.textContent = isBlend
+          ? 'This mode blends by party share (no buckets).'
+          : 'This mode colors winners by buckets and per-party gradients.';
+        document.getElementById('legend-toggle').style.display = isBlend ? 'none' : 'inline-block';
+        document.getElementById('legend-buckets').style.display = 'none';
+        document.getElementById('legend-grid').style.display = 'none';
+        document.getElementById('mix-canvas').style.display = 'none';
+        document.getElementById('one-swatch').style.display = 'none';
+        document.getElementById('legend-title').textContent = isBlend
+          ? 'Blend Legend'
+          : 'Buckets Legend';
+        drawerTitle.textContent = isBlend
+          ? 'Styles (1 color / party)'
+          : 'Styles (Buckets & Gradients)';
+        document.getElementById('bucket-sec').style.display = isBlend ? 'none' : 'block';
+        document.getElementById('colors-sec').style.display = isBlend ? 'none' : 'block';
+        document.getElementById('solid-sec').style.display = isBlend ? 'block' : 'none';
+        updateMapColors();
+      }
+      function toggleMode() {
+        setMode(currentMode === 'blend' ? 'winner' : 'blend');
+      }
+      modeBtn.onclick = toggleMode;
+
+      /* ===== Multiselect ===== */
+      let partyMS;
+      function createMultiSelect(root, options, onChange) {
+        const control = root.querySelector('.ms-control');
+        const placeholder = control.querySelector('.ms-placeholder');
+        const list = root.querySelector('.ms-list');
+        const search = root.querySelector('.ms-search');
+        const btnAll = root.querySelector('#ms-select-all');
+        const btnClear = root.querySelector('#ms-clear');
+        const selected = new Set();
+
+        function renderChips() {
+          control.querySelectorAll('.ms-chip').forEach((n) => n.remove());
+          placeholder.style.display = selected.size ? 'none' : 'inline';
+          for (const val of selected) {
+            const chip = document.createElement('span');
+            chip.className = 'ms-chip';
+            chip.innerHTML = `<span>${val}</span><button type="button" title="Remove" aria-label="Remove ${val}">&times;</button>`;
+            chip.querySelector('button').onclick = (e) => {
+              e.stopPropagation();
+              selected.delete(val);
+              syncList();
+              renderChips();
+              onChange([...selected]);
+            };
+            control.insertBefore(chip, control.querySelector('.ms-caret'));
+          }
+        }
+        function syncList() {
+          list
+            .querySelectorAll('input[type=checkbox]')
+            .forEach((cb) => (cb.checked = selected.has(cb.value)));
+        }
+        function renderList(filter = '') {
+          list.innerHTML = '';
+          const ft = filter.trim().toLowerCase();
+          options
+            .filter((o) => !ft || String(o).toLowerCase().includes(ft))
+            .forEach((val) => {
+              const item = document.createElement('label');
+              item.className = 'ms-item';
+              item.innerHTML = `<input type="checkbox" value="${val}"> <span>${val}</span>`;
+              const cb = item.querySelector('input');
+              cb.checked = selected.has(val);
+              cb.addEventListener('change', () => {
+                cb.checked ? selected.add(val) : selected.delete(val);
+                renderChips();
+                onChange([...selected]);
+              });
+              list.appendChild(item);
+            });
+        }
+        function open() {
+          root.classList.add('open');
+          search.value = '';
+          renderList();
+          search.focus();
+        }
+        function close() {
+          root.classList.remove('open');
+          search.value = '';
+        }
+        control.onclick = () => (root.classList.contains('open') ? close() : open());
+        control.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            open();
+          }
+        });
+        document.addEventListener('click', (e) => {
+          if (!root.contains(e.target)) close();
+        });
+        search.addEventListener('input', () => renderList(search.value));
+        btnAll.onclick = () => {
+          options.forEach((v) => selected.add(v));
+          syncList();
+          renderChips();
+          onChange([...selected]);
+        };
+        btnClear.onclick = () => {
+          selected.clear();
+          syncList();
+          renderChips();
+          onChange([...selected]);
+        };
+
+        renderList();
+        renderChips();
+        return {
+          setSelected(vals) {
+            selected.clear();
+            vals.forEach((v) => options.includes(v) && selected.add(v));
+            syncList();
+            renderChips();
+            onChange([...selected]);
+          },
+          getSelected() {
+            return [...selected];
+          },
+        };
+      }
+
+      /* ===== Color helpers ===== */
+      const normParty = (s) =>
+        String(s)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, ' ')
+          .trim()
+          .replace(/\s+/g, ' ');
+      const DEFAULT_GRAY = ['#f3f4f6', '#d1d5db', '#9ca3af', '#4b5563', '#111827'];
+      const DEFAULT_FALLBACK = '#9ca3af';
+      const COLOR_POS = [0.0, 0.32, 0.58, 0.8, 1.0];
+
+      function interpolateColors(col1, col2, steps, pos = null) {
+        const hex2rgb = (h) => {
+          h = h.replace(/^#/, '');
+          return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+        };
+        const rgb2hex = (rgb) => '#' + rgb.map((v) => v.toString(16).padStart(2, '0')).join('');
+        const a = hex2rgb(col1),
+          b = hex2rgb(col2),
+          out = [];
+        for (let i = 0; i < steps; i++) {
+          const t = pos ? pos[i] : steps === 1 ? 0 : i / (steps - 1);
+          out.push(
+            rgb2hex([
+              Math.round(a[0] + (b[0] - a[0]) * t),
+              Math.round(a[1] + (b[1] - a[1]) * t),
+              Math.round(a[2] + (b[2] - a[2]) * t),
+            ]),
+          );
+        }
+        return out;
+      }
+      const shouldForceGray = (key) =>
+        ['all others', 'others', 'other', 'blank', 'no party', 'write in', 'write-in'].includes(
+          key,
+        );
+      function getPalette(party, year) {
+        const key = normParty(party);
+        if (shouldForceGray(key)) return DEFAULT_GRAY.slice();
+        if (paletteOverridesGrad.has(key)) {
+          const { col1, col2 } = paletteOverridesGrad.get(key);
+          return interpolateColors(col1, col2, 5, COLOR_POS);
+        }
+        const ymap = colorIndex.get(String(year));
+        if (ymap) {
+          const row = ymap.get(key);
+          if (row) return interpolateColors(row.col1, row.col2, 5, COLOR_POS);
+        }
+        return DEFAULT_GRAY.slice();
+      }
+      const clamp01 = (x) => Math.min(1, Math.max(0, x));
+      function hexToRgb01(hex) {
+        let h = hex.replace('#', '');
+        if (h.length === 3)
+          h = h
+            .split('')
+            .map((c) => c + c)
+            .join('');
+        const n = parseInt(h, 16);
+        return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+      }
+      function rgb01ToHex([r, g, b]) {
+        const f = (v) => ('0' + Math.round(clamp01(v) * 255).toString(16)).slice(-2);
+        return '#' + f(r) + f(g) + f(b);
+      }
+      function mixHex(colors, weights) {
+        let acc = [0, 0, 0];
+        for (let i = 0; i < colors.length; i++) {
+          const rgb = hexToRgb01(colors[i]);
+          const w = weights[i] || 0;
+          acc[0] += rgb[0] * w;
+          acc[1] += rgb[1] * w;
+          acc[2] += rgb[2] * w;
+        }
+        return rgb01ToHex(acc);
+      }
+      function getPartyColor(party, year) {
+        const key = normParty(party);
+        if (paletteOverridesSolid.has(key)) return paletteOverridesSolid.get(key).col;
+        const ymap = colorIndex.get(String(year));
+        if (ymap && ymap.get(key)) return ymap.get(key).col2 || DEFAULT_FALLBACK;
+        return DEFAULT_FALLBACK;
+      }
+
+      /* ===== Election helpers ===== */
+      function uniqueDistrictsForYear(year) {
+        const set = new Set(csvData.filter((r) => r.year === year).map((r) => r.cst));
+        return [...set.values()];
+      }
+      function maxShareFor(year, cst, party) {
+        const m = csvData.filter((r) => r.year === year && r.cst === cst && r.party === party);
+        if (!m.length) return 0;
+        let best = 0;
+        for (const r of m) if (r.pvs1 > best) best = r.pvs1;
+        return best;
+      }
+      function bestByDistrict(year, parties) {
+        const filtered = csvData.filter((r) => r.year === year && parties.includes(r.party));
+        const best = {};
+        for (const r of filtered) {
+          const s = r.pvs1,
+            c = r.cst;
+          if (!best[c] || s > best[c].share) best[c] = { party: r.party, share: s };
+        }
+        return best;
+      }
+
+      /* ===== Legend (buckets & blend) ===== */
+      let legendMode = 'columns';
+      const legendBucketsEl = document.getElementById('legend-buckets');
+      const legendGridEl = document.getElementById('legend-grid');
+      const legendTitleEl = document.getElementById('legend-title');
+      const legendToggleBtn = document.getElementById('legend-toggle');
+      legendToggleBtn.onclick = () => {
+        legendMode = legendMode === 'columns' ? 'matrix' : 'columns';
+        setLegendVisibilityBuckets();
+        updateMapColors();
+      };
+      function setLegendVisibilityBuckets() {
+        if (legendMode === 'columns') {
+          legendBucketsEl.style.display = 'grid';
+          legendGridEl.style.display = 'none';
+          legendToggleBtn.textContent = 'Switch to Party rows';
+        } else {
+          legendBucketsEl.style.display = 'none';
+          legendGridEl.style.display = 'grid';
+          legendToggleBtn.textContent = 'Switch to Ranges × Parties';
+        }
+      }
+      function updateLegendMulti(selectedParties, breaks) {
+        const grid = legendBucketsEl,
+          ranges = [0, ...breaks, 1],
+          year = yearSelect.value;
+        legendTitleEl.textContent = selectedParties.length
+          ? 'Vote share buckets (0–100%)'
+          : 'Select one or more parties';
+        grid.innerHTML = '';
+        const cols = selectedParties.length
+          ? 'minmax(110px,1fr) ' + '28px '.repeat(selectedParties.length)
+          : 'minmax(150px,1fr)';
+        grid.style.gridTemplateColumns = cols.trim();
+        const labelHdr = document.createElement('div');
+        labelHdr.className = 'legend-head';
+        labelHdr.style.textAlign = 'left';
+        labelHdr.textContent = 'Range';
+        grid.appendChild(labelHdr);
+        for (const p of selectedParties) {
+          const h = document.createElement('div');
+          h.className = 'legend-head legend-party';
+          h.textContent = p;
+          grid.appendChild(h);
+        }
+        for (let i = 0; i < ranges.length - 1; i++) {
+          const lab = document.createElement('div');
+          lab.className = 'legend-label';
+          lab.textContent = `${(ranges[i] * 100).toFixed(0)}% – ${(ranges[i + 1] * 100).toFixed(
+            0,
+          )}%`;
+          grid.appendChild(lab);
+          for (const p of selectedParties) {
+            const sw = document.createElement('div');
+            sw.className = 'legend-swatch';
+            sw.style.background = getPalette(p, year)[i];
+            grid.appendChild(sw);
+          }
+        }
+        const ndLab = document.createElement('div');
+        ndLab.className = 'legend-label';
+        ndLab.textContent = 'No data/No Candidate';
+        grid.appendChild(ndLab);
+        for (let i = 0; i < selectedParties.length; i++) {
+          const nd = document.createElement('div');
+          nd.className = 'legend-swatch';
+          nd.style.background = '#111';
+          grid.appendChild(nd);
+        }
+      }
+      function updateLegendMatrix(selectedParties, breaks) {
+        const grid = legendGridEl,
+          year = yearSelect.value;
+        grid.innerHTML = '';
+        if (!selectedParties.length) {
+          legendTitleEl.textContent = 'Select one or more parties';
+          return;
+        }
+        legendTitleEl.textContent = 'Vote share buckets (0–100%)';
+        grid.style.gridTemplateColumns = [
+          'minmax(160px,1fr)',
+          '40px',
+          '40px',
+          '40px',
+          '40px',
+          '40px',
+          '90px',
+        ].join(' ');
+        const pct = (x) => (x * 100).toFixed(0) + '%';
+        const hdrs = [
+          { cls: 'legend-head', text: 'Party' },
+          { cls: 'legend-head', text: `0–${pct(breaks[0])}` },
+          { cls: 'legend-head', text: `${pct(breaks[0])}–${pct(breaks[1])}` },
+          { cls: 'legend-head', text: `${pct(breaks[1])}–${pct(breaks[2])}` },
+          { cls: 'legend-head', text: `${pct(breaks[2])}–${pct(breaks[3])}` },
+          { cls: 'legend-head', text: `${pct(breaks[3])}–100%` },
+          { cls: 'legend-head', text: 'No data' },
+        ];
+        for (const h of hdrs) {
+          const d = document.createElement('div');
+          d.className = h.cls;
+          d.textContent = h.text;
+          grid.appendChild(d);
+        }
+        for (const p of selectedParties) {
+          const rowHas = csvData.some((r) => r.year === year && r.party === p);
+          const pal = getPalette(p, year);
+          const name = document.createElement('div');
+          name.textContent = rowHas ? p : `${p} (no data)`;
+          grid.appendChild(name);
+          for (let i = 0; i < 5; i++) {
+            const cell = document.createElement('div');
+            const sw = document.createElement('div');
+            sw.className = 'swatch';
+            if (rowHas) sw.style.background = pal[i];
+            else sw.classList.add('off');
+            cell.appendChild(sw);
+            grid.appendChild(cell);
+          }
+          const nd = document.createElement('div');
+          const ndSw = document.createElement('div');
+          ndSw.className = 'swatch nd';
+          nd.appendChild(ndSw);
+          grid.appendChild(nd);
+        }
+      }
+      function renderLegendBuckets(parties, breaks) {
+        setLegendVisibilityBuckets();
+        if (legendMode === 'columns') updateLegendMulti(parties, breaks);
+        else updateLegendMatrix(parties, breaks);
+      }
+
+      /* ===== Blend legend & tooltip ===== */
+      const mixCanvas = document.getElementById('mix-canvas');
+      const oneSwatch = document.getElementById('one-swatch');
+      const singleColor = document.getElementById('single-color');
+      const legendNote = document.getElementById('legend-note');
+      const legendTip = document.getElementById('legend-tip');
+      const lctx = mixCanvas.getContext('2d');
+      const legendState = {
+        type: 'none',
+        parties: [],
+        colors: [],
+        barRect: null,
+        tri: null,
+        poly: null,
+      };
+      function resetLegend() {
+        legendState.type = 'none';
+        legendState.parties = [];
+        legendState.colors = [];
+        legendState.barRect = null;
+        legendState.tri = null;
+        legendState.poly = null;
+      }
+
+      /* (drawing functions omitted here for brevity; same as previous version) */
+      /* ==== TRI/BAR/POLY drawing (kept exactly like earlier answer) ==== */
+      function drawBlendLegend(selected, year) {
+        legendTip.style.display = 'none';
+        resetLegend();
+        legendNote.textContent = '';
+        mixCanvas.style.display = 'none';
+        oneSwatch.style.display = 'none';
+        if (selected.length === 1) {
+          singleColor.style.background = getPartyColor(selected[0], year);
+          oneSwatch.style.display = 'block';
+          legendNote.textContent = 'Blends disabled: single party selected.';
+          return;
+        }
+        const w = mixCanvas.width,
+          h = mixCanvas.height;
+        lctx.clearRect(0, 0, w, h);
+        if (selected.length === 2) {
+          const [cA, cB] = selected.map((p) => getPartyColor(p, year));
+          const gradH = 44,
+            pad = 14;
+          const rect = { x: pad, y: (h - gradH) / 2, w: w - pad * 2, h: gradH };
+          const g = lctx.createLinearGradient(rect.x, rect.y, rect.x + rect.w, rect.y);
+          g.addColorStop(0, cA);
+          g.addColorStop(1, cB);
+          lctx.fillStyle = g;
+          lctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+          lctx.strokeStyle = '#cbd5e1';
+          lctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+          mixCanvas.style.display = 'block';
+          legendNote.textContent = 'Blend bar (hover for mix %)';
+          legendState.type = 'bar';
+          legendState.parties = [...selected];
+          legendState.colors = [cA, cB];
+          legendState.barRect = rect;
+          return;
+        }
+        if (selected.length === 3) {
+          const size = Math.min(w, h) - 10;
+          const triH = (Math.sqrt(3) / 2) * size;
+          const v1 = { x: w / 2, y: h / 2 - triH / 2 },
+            v2 = { x: w / 2 - size / 2, y: h / 2 + triH / 2 },
+            v3 = { x: w / 2 + size / 2, y: h / 2 + triH / 2 };
+          const denom = (v2.y - v3.y) * (v1.x - v3.x) + (v3.x - v2.x) * (v1.y - v3.y);
+          const colors = selected.map((p) => hexToRgb01(getPartyColor(p, year)));
+          const img = lctx.createImageData(w, h),
+            data = img.data;
+          const path = new Path2D();
+          path.moveTo(v1.x, v1.y);
+          path.lineTo(v2.x, v2.y);
+          path.lineTo(v3.x, v3.y);
+          path.closePath();
+          for (let y = 0; y < h; y++)
+            for (let x = 0; x < w; x++) {
+              const idx = 4 * (y * w + x);
+              if (!lctx.isPointInPath(path, x + 0.5, y + 0.5)) {
+                data[idx] = data[idx + 1] = data[idx + 2] = 0;
+                data[idx + 3] = 0;
+                continue;
+              }
+              const w1 = ((v2.y - v3.y) * (x - v3.x) + (v3.x - v2.x) * (y - v3.y)) / denom;
+              const w2 = ((v3.y - v1.y) * (x - v3.x) + (v1.x - v3.x) * (y - v3.y)) / denom;
+              const w3 = 1 - w1 - w2;
+              const ws = [w1, w2, w3].map((v) => Math.min(1, Math.max(0, v)));
+              const s = ws.reduce((a, b) => a + b, 0);
+              for (let i = 0; i < 3; i++) ws[i] /= s;
+              data[idx] = Math.round(
+                (ws[0] * colors[0][0] + ws[1] * colors[1][0] + ws[2] * colors[2][0]) * 255,
+              );
+              data[idx + 1] = Math.round(
+                (ws[0] * colors[0][1] + ws[1] * colors[1][1] + ws[2] * colors[2][1]) * 255,
+              );
+              data[idx + 2] = Math.round(
+                (ws[0] * colors[0][2] + ws[1] * colors[1][2] + ws[2] * colors[2][2]) * 255,
+              );
+              data[idx + 3] = 255;
+            }
+          lctx.putImageData(img, 0, 0);
+          lctx.strokeStyle = '#cbd5e1';
+          lctx.stroke(path);
+          mixCanvas.style.display = 'block';
+          legendNote.textContent = 'Triangular blend (hover)';
+          legendState.type = 'tri';
+          legendState.parties = [...selected];
+          legendState.colors = selected.map((p) => getPartyColor(p, year));
+          legendState.tri = { v1, v2, v3, denom, path };
+          return;
+        }
+        if (selected.length >= 4 && selected.length <= 7) {
+          const n = selected.length;
+          const R = Math.min(w, h) * 0.42;
+          const cx = w / 2,
+            cy = h / 2,
+            start = -Math.PI / 2;
+          const verts = [];
+          for (let i = 0; i < n; i++) {
+            const a = start + (i * 2 * Math.PI) / n;
+            verts.push({ x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) });
+          }
+          const path = new Path2D();
+          path.moveTo(verts[0].x, verts[0].y);
+          for (let i = 1; i < n; i++) path.lineTo(verts[i].x, verts[i].y);
+          path.closePath();
+          const colors = selected.map((p) => hexToRgb01(getPartyColor(p, year)));
+          const img = lctx.createImageData(w, h),
+            data = img.data,
+            power = 2.2;
+          for (let y = 0; y < h; y++)
+            for (let x = 0; x < w; x++) {
+              const idx = 4 * (y * w + x);
+              if (!lctx.isPointInPath(path, x, y)) {
+                data[idx] = data[idx + 1] = data[idx + 2] = 0;
+                data[idx + 3] = 0;
+                continue;
+              }
+              let near = -1,
+                minD = 1e9;
+              for (let i = 0; i < n; i++) {
+                const dx = x - verts[i].x,
+                  dy = y - verts[i].y;
+                const d = dx * dx + dy * dy;
+                if (d < minD) {
+                  minD = d;
+                  near = i;
+                }
+              }
+              if (minD < 1) {
+                data[idx] = Math.round(colors[near][0] * 255);
+                data[idx + 1] = Math.round(colors[near][1] * 255);
+                data[idx + 2] = Math.round(colors[near][2] * 255);
+                data[idx + 3] = 255;
+                continue;
+              }
+              let ws = new Array(n),
+                sum = 0;
+              for (let i = 0; i < n; i++) {
+                const dx = x - verts[i].x,
+                  dy = y - verts[i].y;
+                const d = Math.sqrt(dx * dx + dy * dy);
+                const wv = 1 / Math.pow(d, power);
+                ws[i] = wv;
+                sum += wv;
+              }
+              let r = 0,
+                g = 0,
+                b = 0;
+              for (let i = 0; i < n; i++) {
+                const wv = ws[i] / sum;
+                r += colors[i][0] * wv;
+                g += colors[i][1] * wv;
+                b += colors[i][2] * wv;
+              }
+              data[idx] = Math.round(r * 255);
+              data[idx + 1] = Math.round(g * 255);
+              data[idx + 2] = Math.round(b * 255);
+              data[idx + 3] = 255;
+            }
+          lctx.putImageData(img, 0, 0);
+          lctx.strokeStyle = '#cbd5e1';
+          lctx.stroke(path);
+          mixCanvas.style.display = 'block';
+          legendNote.textContent = `${n}-party radial blend (hover)`;
+          legendState.type = 'poly';
+          legendState.parties = [...selected];
+          legendState.colors = selected.map((p) => getPartyColor(p, year));
+          legendState.poly = { verts, path, power: 2.2 };
+          return;
+        }
+        legendNote.textContent = 'Legend hidden (select ≤7 parties).';
+      }
+      function showLegendTip(html, pageX, pageY, mixColor) {
+        legendTip.innerHTML =
+          html +
+          (mixColor
+            ? `<div class="mix"><span class="sq" style="background:${mixColor}"></span><span>mixed color</span></div>`
+            : '');
+        legendTip.style.left = pageX + 12 + 'px';
+        legendTip.style.top = pageY + 12 + 'px';
+        legendTip.style.display = 'block';
+      }
+      function hideLegendTip() {
+        legendTip.style.display = 'none';
+      }
+
+      /* ===== Map coloring ===== */
+      const defaultBreaks = [0.35, 0.5, 0.62, 0.78];
+      let customBreaks = defaultBreaks.slice();
+      function bucketColor(v, breaks, pal) {
+        for (let i = 0; i < breaks.length; i++) if (v < breaks[i]) return pal[i];
+        return pal[breaks.length];
+      }
+      function updateMapColors() {
+        if (!map.getLayer('districts')) return;
+        const year = yearSelect.value;
+        const parties = partyMS ? partyMS.getSelected() : [];
+        if (currentMode === 'blend') {
+          drawBlendLegend(parties, year);
+        } else {
+          renderLegendBuckets(parties, customBreaks.slice());
+        }
+
+        if (!csvData.length || !parties.length) {
+          map.setPaintProperty('districts', 'fill-color', '#ddd');
+          refreshPartyEditor();
+          return;
+        }
+        const dlist = uniqueDistrictsForYear(year);
+        if (!dlist.length) {
+          map.setPaintProperty('districts', 'fill-color', '#ddd');
+          refreshPartyEditor();
+          return;
+        }
+
+        const match = ['match', ['to-number', ['get', 'cst']]];
+        if (currentMode === 'blend') {
+          for (const cst of dlist) {
+            const shares = parties.map((p) => maxShareFor(year, cst, p));
+            const sum = shares.reduce((a, b) => a + b, 0);
+            if (sum <= 0) {
+              match.push(Number(cst), '#111');
+              continue;
+            }
+            let acc = [0, 0, 0];
+            for (let i = 0; i < parties.length; i++) {
+              const w = shares[i] / sum;
+              const rgb = hexToRgb01(getPartyColor(parties[i], year));
+              acc[0] += rgb[0] * w;
+              acc[1] += rgb[1] * w;
+              acc[2] += rgb[2] * w;
+            }
+            match.push(Number(cst), rgb01ToHex(acc));
+          }
+        } else {
+          const winners = bestByDistrict(year, parties);
+          for (const cst of dlist) {
+            const info = winners[cst];
+            if (!info) {
+              match.push(Number(cst), '#111');
+              continue;
+            }
+            const pal = getPalette(info.party, year);
+            match.push(Number(cst), bucketColor(info.share, customBreaks, pal));
+          }
+        }
+        match.push('#111');
+        map.setPaintProperty('districts', 'fill-color', match);
+        refreshPartyEditor();
+      }
+      function loadPmtiles(year) {
+        if (map.getLayer('districts')) map.removeLayer('districts');
+        if (map.getSource(srcId)) map.removeSource(srcId);
+        const url = tileSources[year];
+        sourceLayer = url.replace('.pmtiles', '').split('/').pop();
+        map.addSource(srcId, { type: 'vector', url: `pmtiles://${url}` });
+        map.addLayer({
+          id: 'districts',
+          type: 'fill',
+          source: srcId,
+          'source-layer': sourceLayer,
+          paint: { 'fill-color': '#ddd', 'fill-opacity': 0.75, 'fill-outline-color': '#9ca3af' },
+        });
+        map.on('mouseenter', 'districts', () => (map.getCanvas().style.cursor = 'pointer'));
+        map.on('mouseleave', 'districts', () => {
+          map.getCanvas().style.cursor = '';
+          hideMapTooltip();
+        });
+        updateMapColors();
+      }
+      yearSelect.onchange = () => loadPmtiles(yearSelect.value);
+
+      /* ===== Data load ===== */
+      Promise.all([
+        fetch('us-house-2010-2014.csv').then((r) => r.text()),
+        fetch('pty-colors.csv').then((r) => r.text()),
+      ]).then(([electionText, colorText]) => {
+        const rows = parseCSV(electionText);
+        const header = (rows.shift() || []).map((s) => String(s).trim().toLowerCase());
+        const col = (...names) => {
+          for (const n of names) {
+            const i = header.indexOf(String(n).toLowerCase());
+            if (i !== -1) return i;
+          }
+          return -1;
+        };
+        const idx = {
+          year: col('yr', 'year'),
+          party: col('pty_n', 'party', 'party_name', 'partylabel'),
+          pvs1: col('pvs1', 'share', 'vote_share', 'pct'),
+          cst: col('cst', 'district', 'geoid', 'district_id'),
+          state: col('cst_n', 'district_name', 'name'),
+        };
+        csvData = rows
+          .map((r) => ({
+            year: r[idx.year],
+            party: r[idx.party],
+            pvs1: parseFloat(r[idx.pvs1]),
+            cst: parseInt(r[idx.cst]),
+            state: r[idx.state],
+          }))
+          .filter((r) => r.party && !Number.isNaN(r.pvs1) && !Number.isNaN(r.cst));
+
+        const crows = parseCSV(colorText);
+        crows.shift();
+        colorIndex = new Map();
+        for (const r of crows) {
+          const y = String(r[0]),
+            partyName = r[1],
+            col1 = r[2],
+            col2 = r[3];
+          if (!colorIndex.has(y)) colorIndex.set(y, new Map());
+          colorIndex.get(y).set(normParty(partyName), { name: partyName, col1, col2 });
+        }
+
+        const parties = [...new Set(csvData.map((r) => r.party))]
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b));
+        partyMS = createMultiSelect(document.getElementById('party-ms'), parties, () => {
+          updateMapColors();
+          refreshPartyEditor();
+        });
+
+        const defaults = ['democrat', 'republican', 'green']
+          .filter((p) => parties.includes(p))
+          .slice(0, 3);
+        partyMS.setSelected(defaults.length ? defaults : parties.slice(0, 3));
+
+        refreshPartyEditor();
+        map.once('load', () => loadPmtiles(yearSelect.value));
+      });
+
+      /* ===== CSV parser ===== */
+      function parseCSV(text) {
+        text = text.replace(/\r/g, '');
+        const rows = [],
+          row = [],
+          push = () => rows.push(row.splice(0));
+        let i = 0,
+          q = false,
+          cell = '';
+        while (i < text.length) {
+          const ch = text[i];
+          if (ch === '"') {
+            if (q && text[i + 1] === '"') {
+              cell += '"';
+              i++;
+            } else q = !q;
+          } else if (ch === ',' && !q) {
+            row.push(cell);
+            cell = '';
+          } else if (ch === '\n' && !q) {
+            row.push(cell);
+            cell = '';
+            push();
+          } else cell += ch;
+          i++;
+        }
+        if (cell.length || row.length) {
+          row.push(cell);
+          push();
+        }
+        return rows;
+      }
+
+      /* ===== Tooltip ===== */
+      const tooltip = document.getElementById('tooltip');
+      function hideMapTooltip() {
+        tooltip.style.display = 'none';
+      }
+      function showMapTooltip(html, x, y) {
+        tooltip.innerHTML = html;
+        tooltip.style.left = x + 15 + 'px';
+        tooltip.style.top = y + 15 + 'px';
+        tooltip.style.display = 'block';
+      }
+      function stateFromFeature(f) {
+        const p = f.properties || {};
+        const abbr = p.st_usps || p.state_abbr || p.st || p.STATE || null;
+        if (abbr) return String(abbr).toUpperCase();
+        const n = String(p.cst_n || p.name || '');
+        const m = /^([A-Z]{2})[\s-]/.exec(n);
+        if (m) return m[1];
+        const c = Number(p.cst);
+        if (!Number.isNaN(c)) {
+          const ss = Math.floor(c / 1000);
+          const USPS = {
+            1: 'AL',
+            2: 'AK',
+            4: 'AZ',
+            5: 'AR',
+            6: 'CA',
+            8: 'CO',
+            9: 'CT',
+            10: 'DE',
+            11: 'DC',
+            12: 'FL',
+            13: 'GA',
+            15: 'HI',
+            16: 'ID',
+            17: 'IL',
+            18: 'IN',
+            19: 'IA',
+            20: 'KS',
+            21: 'KY',
+            22: 'LA',
+            23: 'ME',
+            24: 'MD',
+            25: 'MA',
+            26: 'MI',
+            27: 'MN',
+            28: 'MS',
+            29: 'MO',
+            30: 'MT',
+            31: 'NE',
+            32: 'NV',
+            33: 'NH',
+            34: 'NJ',
+            35: 'NM',
+            36: 'NY',
+            37: 'NC',
+            38: 'ND',
+            39: 'OH',
+            40: 'OK',
+            41: 'OR',
+            42: 'PA',
+            44: 'RI',
+            45: 'SC',
+            46: 'SD',
+            47: 'TN',
+            48: 'TX',
+            49: 'UT',
+            50: 'VT',
+            51: 'VA',
+            53: 'WA',
+            54: 'WV',
+            55: 'WI',
+            56: 'WY',
+          };
+          if (USPS[ss]) return USPS[ss];
+        }
+        return '';
+      }
+      map.on('mousemove', 'districts', (e) => {
+        const f = e.features && e.features[0];
+        if (!f) {
+          hideMapTooltip();
+          return;
+        }
+        const year = yearSelect.value;
+        const parties = partyMS ? partyMS.getSelected() : [];
+        const cst = Number(f.properties.cst);
+        const districtName = f.properties.cst_n || `District ${cst}`;
+        const st = stateFromFeature(f);
+        let colorSquare = '#111',
+          rowsHtml = '';
+        if (currentMode === 'blend') {
+          const parts = parties.map((p) => ({ party: p, share: maxShareFor(year, cst, p) }));
+          const sum = parts.reduce((a, b) => a + b.share, 0);
+          const colors = parties.map((p) => getPartyColor(p, year));
+          if (sum > 0) {
+            const wts = parts.map((x) => x.share / sum);
+            colorSquare = mixHex(colors, wts);
+          }
+          rowsHtml =
+            parts
+              .filter((x) => x.share > 0)
+              .sort((a, b) => b.share - a.share)
+              .map((x) => `${x.party}: ${(x.share * 100).toFixed(1)}%`)
+              .join('<br>') || 'No data for selected parties';
+        } else {
+          const winners = bestByDistrict(year, parties);
+          const info = winners[cst];
+          if (info) {
+            colorSquare = bucketColor(info.share, customBreaks, getPalette(info.party, year));
+          }
+          const parts = parties
+            .map((p) => ({ party: p, share: maxShareFor(year, cst, p) }))
+            .filter((x) => x.share > 0)
+            .sort((a, b) => b.share - a.share);
+          rowsHtml =
+            parts.map((x) => `${x.party}: ${(x.share * 100).toFixed(1)}%`).join('<br>') ||
+            'No data for selected parties';
+        }
+        const html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><strong>${
+          st ? st + ' — ' : ''
+        }${districtName}</strong><span style="width:16px;height:16px;border:1px solid #999;border-radius:3px;display:inline-block;background:${colorSquare}"></span></div>${rowsHtml}`;
+        showMapTooltip(html, e.originalEvent.pageX, e.originalEvent.pageY);
+      });
+      map.on('mouseleave', 'districts', hideMapTooltip);
+
+      /* ===== Break editors ===== */
+      const rEls = ['r1', 'r2', 'r3', 'r4'].map((id) => document.getElementById(id));
+      const nEls = ['n1', 'n2', 'n3', 'n4'].map((id) => document.getElementById(id));
+      function setBreakInputs(b) {
+        const pct = b.map((x) => Math.round(x * 100));
+        for (let i = 0; i < 4; i++) {
+          rEls[i].value = pct[i];
+          nEls[i].value = pct[i];
+        }
+      }
+      function clampBreaks(vals) {
+        const out = vals.slice();
+        out[0] = Math.min(Math.max(out[0], 1), 98);
+        for (let i = 1; i < 4; i++)
+          out[i] = Math.min(Math.max(out[i], out[i - 1] + 1), i === 3 ? 99 : 98);
+        return out;
+      }
+      function applyFromInputs() {
+        const raw = nEls.map((el) => Number(el.value) || 0);
+        const fixed = clampBreaks(raw);
+        for (let i = 0; i < 4; i++) {
+          if (fixed[i] !== raw[i]) {
+            nEls[i].value = fixed[i];
+            rEls[i].value = fixed[i];
+          }
+        }
+        customBreaks = fixed.map((v) => v / 100);
+        document.getElementById('bucket-msg').textContent = `Using: ${fixed.join(' / ')}%`;
+        updateMapColors();
+      }
+      rEls.forEach((el, i) =>
+        el.addEventListener('input', () => {
+          nEls[i].value = el.value;
+          applyFromInputs();
+        }),
+      );
+      nEls.forEach((el, i) =>
+        el.addEventListener('input', () => {
+          rEls[i].value = el.value;
+          applyFromInputs();
+        }),
+      );
+      document.getElementById('preset-classic').onclick = () => {
+        customBreaks = [0.35, 0.5, 0.62, 0.78];
+        setBreakInputs(customBreaks);
+        updateMapColors();
+        document.getElementById('bucket-msg').textContent = 'Using: 35 / 50 / 62 / 78%';
+      };
+      document.getElementById('preset-even').onclick = () => {
+        customBreaks = [0.2, 0.4, 0.6, 0.8];
+        setBreakInputs(customBreaks);
+        updateMapColors();
+        document.getElementById('bucket-msg').textContent = 'Using: 20 / 40 / 60 / 80%';
+      };
+      document.getElementById('preset-tight').onclick = () => {
+        customBreaks = [0.45, 0.5, 0.55, 0.6];
+        setBreakInputs(customBreaks);
+        updateMapColors();
+        document.getElementById('bucket-msg').textContent = 'Using: 45 / 50 / 55 / 60%';
+      };
+      setBreakInputs(customBreaks);
+
+      /* ===== Party color editors ===== */
+      const partyColorsGradEl = document.getElementById('party-colors-grad');
+      const colorsHintGrad = document.getElementById('colors-hint-grad');
+      function currentEndpointsFor(party) {
+        const key = normParty(party);
+        if (paletteOverridesGrad.has(key)) return paletteOverridesGrad.get(key);
+        const ymap = colorIndex.get(String(yearSelect.value));
+        if (ymap && ymap.get(key)) return { col1: ymap.get(key).col1, col2: ymap.get(key).col2 };
+        return { col1: '#d1d5db', col2: '#111827' };
+      }
+      function refreshGradientEditor() {
+        const parties = partyMS ? partyMS.getSelected() : [];
+        partyColorsGradEl.innerHTML = '';
+        colorsHintGrad.style.display = parties.length ? 'none' : 'block';
+        for (const p of parties) {
+          const { col1, col2 } = currentEndpointsFor(p);
+          const key = normParty(p);
+          const row = document.createElement('div');
+          row.className = 'party-row';
+          row.innerHTML = `<div class="mini" style="font-weight:600;">${p}</div><input type="color" class="c1" value="${col1}"><input type="color" class="c2" value="${col2}"><div class="grad"></div><button class="pill-small reset" type="button">Reset</button>`;
+          const grad = row.querySelector('.grad'),
+            c1 = row.querySelector('.c1'),
+            c2 = row.querySelector('.c2');
+          const repaint = () =>
+            (grad.style.background = `linear-gradient(to right, ${c1.value}, ${c2.value})`);
+          repaint();
+          c1.addEventListener('input', () => {
+            paletteOverridesGrad.set(key, { col1: c1.value, col2: c2.value });
+            repaint();
+            updateMapColors();
+          });
+          c2.addEventListener('input', () => {
+            paletteOverridesGrad.set(key, { col1: c1.value, col2: c2.value });
+            repaint();
+            updateMapColors();
+          });
+          row.querySelector('.reset').onclick = () => {
+            paletteOverridesGrad.delete(key);
+            const d = currentEndpointsFor(p);
+            c1.value = d.col1;
+            c2.value = d.col2;
+            repaint();
+            updateMapColors();
+          };
+          partyColorsGradEl.appendChild(row);
+        }
+      }
+      const partyColorsSolidEl = document.getElementById('party-colors-solid');
+      function refreshSolidEditor() {
+        const parties = partyMS ? partyMS.getSelected() : [];
+        partyColorsSolidEl.innerHTML = '';
+        for (const p of parties) {
+          const key = normParty(p);
+          const color = getPartyColor(p, yearSelect.value);
+          const row = document.createElement('div');
+          row.className = 'party-row single';
+          row.innerHTML = `<div class="mini" style="font-weight:600;">${p}</div><input type="color" class="c1" value="${color}"><div class="grad" style="background:${color}"></div><button class="pill-small reset" type="button">Reset</button>`;
+          const c1 = row.querySelector('.c1'),
+            grad = row.querySelector('.grad');
+          c1.addEventListener('input', () => {
+            paletteOverridesSolid.set(key, { col: c1.value });
+            grad.style.background = c1.value;
+            updateMapColors();
+          });
+          row.querySelector('.reset').onclick = () => {
+            paletteOverridesSolid.delete(key);
+            const cc = getPartyColor(p, yearSelect.value);
+            c1.value = cc;
+            grad.style.background = cc;
+            updateMapColors();
+          };
+          partyColorsSolidEl.appendChild(row);
+        }
+      }
+      function refreshPartyEditor() {
+        if (currentMode === 'blend') refreshSolidEditor();
+        else refreshGradientEditor();
+      }
+
+      /* ===== Live Lat/Lon/Zoom ===== */
+      const latEl = document.getElementById('lat'),
+        lonEl = document.getElementById('lon'),
+        zoomEl = document.getElementById('zoom'),
+        goBtn = document.getElementById('go');
+      function syncLLZ() {
+        const c = map.getCenter();
+        latEl.value = c.lat.toFixed(4);
+        lonEl.value = c.lng.toFixed(4);
+        zoomEl.value = map.getZoom().toFixed(2);
+      }
+      map.on('load', syncLLZ);
+      map.on('moveend', syncLLZ);
+      function debounce(fn, wait = 250) {
+        let t;
+        return (...args) => {
+          clearTimeout(t);
+          t = setTimeout(() => fn(...args), wait);
+        };
+      }
+      const liveGoto = debounce(() => {
+        const lat = parseFloat(latEl.value),
+          lon = parseFloat(lonEl.value),
+          z = parseFloat(zoomEl.value);
+        if (Number.isFinite(lat) && Number.isFinite(lon) && Number.isFinite(z)) {
+          map.easeTo({ center: [lon, lat], zoom: z, duration: 600 });
+        }
+      }, 300);
+      [latEl, lonEl, zoomEl].forEach((el) => {
+        el.addEventListener('input', liveGoto);
+        el.addEventListener('change', liveGoto);
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') liveGoto();
+        });
+      });
+      goBtn.onclick = liveGoto;
+
+      /* ===== Screenshot mode + PNG with legend compositor ===== */
+      (function () {
+        const legendEl = document.getElementById('legend');
+        const ssBtn = document.getElementById('ss-mode');
+        const ssExit = document.getElementById('ss-exit');
+        const ssDl = document.getElementById('ss-download');
+        const ssLegend = document.getElementById('ss-legend');
+
+        const inSS = () => document.body.classList.contains('ss');
+        function applyLegend() {
+          if (!inSS()) {
+            legendEl.style.display = 'block';
+            document.body.classList.remove('show-legend');
+            return;
+          }
+          if (ssLegend.checked) document.body.classList.add('show-legend');
+          else document.body.classList.remove('show-legend');
+        }
+        function enterSS() {
+          document.body.classList.add('ss');
+          ssLegend.checked = false;
+          applyLegend();
+          positionLegend(true);
+        }
+        function exitSS() {
+          document.body.classList.remove('ss', 'show-legend');
+          legendEl.style.display = 'block';
+          positionLegend(false);
+        }
+        ssBtn.onclick = enterSS;
+        ssExit.onclick = exitSS;
+        ssLegend.onchange = () => {
+          if (inSS()) applyLegend();
+        };
+
+        function waitForIdle() {
+          return new Promise((resolve) => {
+            if (
+              map.isStyleLoaded &&
+              map.isStyleLoaded() &&
+              map.areTilesLoaded &&
+              map.areTilesLoaded()
+            ) {
+              return requestAnimationFrame(resolve);
+            }
+            const onIdle = () => {
+              map.off('idle', onIdle);
+              requestAnimationFrame(resolve);
+            };
+            map.on('idle', onIdle);
+            map.triggerRepaint();
+          });
+        }
+        function downloadBlob(blob, filename) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        }
+        const pngName = () =>
+          `map-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`;
+
+        ssDl.onclick = async () => {
+          try {
+            await waitForIdle();
+
+            const mapCanvas = map.getCanvas();
+            const scale = window.devicePixelRatio || 1;
+            const out = document.createElement('canvas');
+            out.width = mapCanvas.width;
+            out.height = mapCanvas.height;
+            const ctx = out.getContext('2d');
+            ctx.drawImage(mapCanvas, 0, 0);
+            if (ssLegend.checked && legendEl && legendEl.offsetParent !== null) {
+              const legendBitmap = await html2canvas(legendEl, {
+                backgroundColor: null,
+                scale: scale,
+                useCORS: true,
+              });
+              const mapRect = mapCanvas.getBoundingClientRect();
+              const legRect = legendEl.getBoundingClientRect();
+              const dx = (legRect.left - mapRect.left) * scale;
+              const dy = (legRect.top - mapRect.top) * scale;
+              const dw = legRect.width * scale;
+              const dh = legRect.height * scale;
+              ctx.drawImage(
+                legendBitmap,
+                0,
+                0,
+                legendBitmap.width,
+                legendBitmap.height,
+                dx,
+                dy,
+                dw,
+                dh,
+              );
+            }
+
+            // 3) Save PNG
+            if (out.toBlob) {
+              out.toBlob((blob) => {
+                if (!blob) return alert('PNG export failed.');
+                downloadBlob(blob, pngName());
+              });
+            } else {
+              const a = document.createElement('a');
+              a.href = out.toDataURL('image/png');
+              a.download = pngName();
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+            }
+          } catch (e) {
+            console.error(e);
+            alert("Couldn't export PNG. Likely CORS/tainted canvas or a rendering error.");
+          }
+        };
+      })();
+
+      /* ===== Init mode ===== */
+      (function initMode() {
+        const url = new URL(location);
+        const q = url.searchParams.get('mode');
+        let ls = null;
+        try {
+          ls = localStorage.getItem('us-house-mode');
+        } catch {}
+        const wanted = q === 'winner' || q === 'blend' ? q : ls || 'winner';
+        setMode(wanted);
+        try {
+          localStorage.setItem('us-house-mode', wanted);
+        } catch {}
+      })();
+    </script>
+  </body>
+</html>
