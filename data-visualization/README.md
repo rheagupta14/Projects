@@ -72,5 +72,5 @@ publicly available.
 
 ## Demo
 
-[Download short interaction demo](demo.mov)
+[Download short interaction demo](./demo.mov)
 **Code available upon request.**
